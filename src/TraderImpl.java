@@ -13,30 +13,39 @@ public class TraderImpl implements Trader {
         }
     }
 
+    public synchronized void setBushelAmount(Grain g, int amt){
+        bushels.put(g, new Integer(amt));
+    }
+
+    public synchronized void outOfStock(Grain g, int amt){
+        if(g.equals(specialty)){
+            deliver(Math.abs(amt));
+        } else {
+            swap(g, Math.abs(amt));
+        }
+    }
+
+
     public void get(Order order){
         int diff = 0;
         for(Grain g : bushels.keySet()){
             diff = bushels.get(g) - order.get(g);
             if(diff < 0){
-                if(g.equals(specialty)){
-                    deliver(Math.abs(diff));
-                } else {
-                    swap(g, Math.abs(diff));
-                }
+                outOfStock(g, diff);
             }
         }
     }
 
     public void deliver(int amt){
         int qnty = bushels.get(specialty) + amt;
-        bushels.put(specialty, new Integer(qnty));
+        setBushelAmount(specialty, qnty);
     }
 
     public void swap(Grain what, int amt){
         int qnty1 = bushels.get(specialty) - amt;
         int qnty2 = bushels.get(what) + amt;
 
-        bushels.put(specialty, new Integer(qnty1));
+        setBushelAmount(specialty, qnty1);
         Order order = new Order();
         order.set(what, amt);
 
@@ -45,7 +54,24 @@ public class TraderImpl implements Trader {
         } catch (InterruptedException e) {
 
         }
-        bushels.put(what, new Integer(qnty2));
+
+        requestSwap(what, qnty2);
+    }
+
+    private synchronized void requestSwap(Grain g, int amt){
+        Order order = new Order();
+        order.set(g, amt);
+        try {
+            P2.specialist(g).get(order);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        try {
+            wait();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        setBushelAmount(g, amt);
     }
 
     public Order getAmountOnHand(){
