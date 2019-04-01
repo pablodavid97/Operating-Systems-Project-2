@@ -17,23 +17,36 @@ public class TraderImpl implements Trader {
         bushels.put(g, new Integer(amt));
     }
 
-    public synchronized void outOfStock(Grain g, int amt){
+    public void outOfStock(Grain g, int amt){
         if(g.equals(specialty)){
             deliver(Math.abs(amt));
         } else {
-            swap(g, Math.abs(amt));
+            try {
+                swap(g, Math.abs(amt));
+            }catch(Exception e){}
         }
     }
 
 
     public void get(Order order){
         int diff = 0;
-        for(Grain g : bushels.keySet()){
-            diff = bushels.get(g) - order.get(g);
-            if(diff < 0){
-                outOfStock(g, diff);
+        try {
+            for (Grain g : bushels.keySet()) {
+                
+                diff = bushels.get(g) - order.get(g);
+                if (diff < 0) {
+                    synchronized (order) {
+                        order.wait(1200);
+                    }
+
+                    synchronized (order) {
+                        outOfStock(g, diff);
+                        order.notifyAll();
+                    }
+                  //  outOfStock(g, diff);
+                }
             }
-        }
+        }catch(Exception e){e.printStackTrace();}
     }
 
     public void deliver(int amt){
@@ -45,9 +58,13 @@ public class TraderImpl implements Trader {
         int qnty1 = bushels.get(specialty) - amt;
         int qnty2 = bushels.get(what) + amt;
 
+
         setBushelAmount(specialty, qnty1);
         Order order = new Order();
-        order.set(what, amt);
+        synchronized (order){
+            order.set(what, amt);
+        }
+
 
         try {
             P2.specialist(what).get(order);
@@ -55,23 +72,7 @@ public class TraderImpl implements Trader {
 
         }
 
-        requestSwap(what, qnty2);
-    }
-
-    private synchronized void requestSwap(Grain g, int amt){
-        Order order = new Order();
-        order.set(g, amt);
-        try {
-            P2.specialist(g).get(order);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        try {
-            wait();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        setBushelAmount(g, amt);
+        setBushelAmount(what, qnty2);
     }
 
     public Order getAmountOnHand(){
