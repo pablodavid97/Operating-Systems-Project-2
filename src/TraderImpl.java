@@ -1,17 +1,19 @@
 import org.omg.CORBA.ORB;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TraderImpl implements Trader {
     private Grain specialty;
-    private Map<Grain, Integer> bushels = new EnumMap(Grain.class);
+    private Map<Grain, Integer> bushels = new ConcurrentHashMap<>();//new EnumMap(Grain.class);
+
     private static Map<Grain,Trader> tradersP= new HashMap<>();
 //    private  Map<Grain,Integer> quantity = new HashMap<>();
 
     TraderImpl(Grain specialty) {
         this.specialty = specialty;
         //bushels = new EnumMap(Grain.class);
-       // bushels= new HashMap<>();
+        // bushels= new HashMap<>();
 
         tradersP.put(specialty,this);
 
@@ -23,31 +25,9 @@ public class TraderImpl implements Trader {
 //        System.out.println("aquantity: "+quantity);
     }
 
-    public void setBushelAmount(Grain g, int amt) {
+    public synchronized void setBushelAmount(Grain g, int amt) {
         bushels.put(g, amt);
-    }
-
-    public void outOfStock(Grain g, int amt) throws InterruptedException {
-        for(Grain g1: tradersP.keySet())
-        {
-            if(g.equals(tradersP.keySet().iterator()))
-            {
-                if (g.equals(specialty)) {
-//                    wait(100);
-                    deliver(Math.abs(amt));
-//                    notify();
-                } else {
-                    try {
-                        System.out.println("Swapping.....");
-//                        wait(100);
-                        P2.specialist(g).swap(specialty, Math.abs(amt));
-//                        notify();
-                    } catch (Exception e) {}
-                }
-
-            }
-        }
-
+        notifyAll();
     }
 
 
@@ -59,16 +39,40 @@ public class TraderImpl implements Trader {
 
             diff = remainingStock.get(g) - order.get(g);
 
+           // synchronized (bushels){
+                while (getAmountOnHand().get(g)-order.get(g)<=0) {
+                    {
+                        diff=getAmountOnHand().get(g)-order.get(g);
+                    }
+                }
+            //}
+
             if (diff < 0) {
-                synchronized (order) {
+                synchronized (bushels) {
                     System.out.println("Trader " + specialty + " Out of stock");
-                    order.wait(1000);
-                    outOfStock(g, diff);
+                    //order.wait(1000);
+                    //wait();
+
+                    for(Grain g1: tradersP.keySet())
+                    {
+                        if(g.equals(tradersP.keySet().iterator()))
+                        {
+                            if (g.equals(specialty)) {
+                                wait();
+                            } else {
+                                try {
+                                    System.out.println("Swapping.....");
+                                    P2.specialist(g).swap(specialty, Math.abs(diff));
+                                } catch (Exception e) {}
+                            }
+
+                        }
+                    }
                     setBushelAmount(g, 0);
                 }
             } else {
-                synchronized (order){
-                    order.wait(10);
+                synchronized (bushels){
+                   // wait();
                     setBushelAmount(g, remainingStock.get(g) - order.get(g));
                 }
             }
@@ -79,6 +83,7 @@ public class TraderImpl implements Trader {
     public void deliver(int amt) throws InterruptedException {
         int qnty = bushels.get(specialty) + amt;
         setBushelAmount(specialty, qnty);
+
     }
 
     public void swap(Grain what, int amt) throws InterruptedException {
@@ -86,7 +91,7 @@ public class TraderImpl implements Trader {
 
         if(qnty1 < 0){
             synchronized (bushels) {
-                bushels.wait(1000);
+                //bushels.wait(1000);
                 deliver(Math.abs(qnty1));
             }
         }
@@ -95,6 +100,8 @@ public class TraderImpl implements Trader {
 
         int qnty2 = bushels.get(what) + amt;
         setBushelAmount(what, qnty2);
+
+        notifyAll();
 
     }
 
@@ -107,7 +114,7 @@ public class TraderImpl implements Trader {
             order.set(g,bushels.get(g).intValue());
         }
 
-        System.out.println("..............................."+order);
+        System.out.println("..............................."+ specialty +order);
         return order;
     }
 }
