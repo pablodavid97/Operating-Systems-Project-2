@@ -5,8 +5,8 @@ import java.util.*;
 public class TraderImpl implements Trader {
     private Grain specialty;
     private Map<Grain, Integer> bushels = new EnumMap(Grain.class);
-    private Map<Grain,Trader> tradersP= new HashMap<>();
-    private  Map<Grain,Integer> quantity = new HashMap<>();
+    private static Map<Grain,Trader> tradersP= new HashMap<>();
+//    private  Map<Grain,Integer> quantity = new HashMap<>();
 
     TraderImpl(Grain specialty) {
         this.specialty = specialty;
@@ -17,31 +17,31 @@ public class TraderImpl implements Trader {
 
         for (Grain g : Grain.values()) {
             bushels.put(g, 0);
-            quantity.put(g,0);
+//            quantity.put(g,0);
         }
-        System.out.println("bushels: " +bushels);
-        System.out.println("aquantity: "+quantity);
+        System.out.println("Specialist: " + specialty + " bushels: " +bushels);
+//        System.out.println("aquantity: "+quantity);
     }
 
     public void setBushelAmount(Grain g, int amt) {
-        bushels.put(g, new Integer(amt));
+        bushels.put(g, amt);
     }
 
-    public synchronized void outOfStock(Grain g, int amt) throws InterruptedException {
+    public void outOfStock(Grain g, int amt) throws InterruptedException {
         for(Grain g1: tradersP.keySet())
         {
             if(g.equals(tradersP.keySet().iterator()))
             {
                 if (g.equals(specialty)) {
-                    wait(10);
+//                    wait(100);
                     deliver(Math.abs(amt));
-                    notify();
+//                    notify();
                 } else {
                     try {
                         System.out.println("Swapping.....");
-                        wait(10);
+//                        wait(100);
                         P2.specialist(g).swap(specialty, Math.abs(amt));
-                        notify();
+//                        notify();
                     } catch (Exception e) {}
                 }
 
@@ -61,8 +61,15 @@ public class TraderImpl implements Trader {
 
             if (diff < 0) {
                 synchronized (order) {
+                    System.out.println("Trader " + specialty + " Out of stock");
                     order.wait(1000);
                     outOfStock(g, diff);
+                    setBushelAmount(g, 0);
+                }
+            } else {
+                synchronized (order){
+                    order.wait(10);
+                    setBushelAmount(g, remainingStock.get(g) - order.get(g));
                 }
             }
         }
@@ -77,26 +84,13 @@ public class TraderImpl implements Trader {
     public void swap(Grain what, int amt) throws InterruptedException {
         int qnty1 = bushels.get(specialty) - amt;
 
-//        int maxTime=0;
-//        while (getAmountOnHand().get(what)<amt) {
-//            wait();
-//            if(maxTime++>100){
-//                System.out.println("Max wait");
-//
-//                return;
-//            }
-//
-//        }
         if(qnty1 < 0){
-            deliver(Math.abs(qnty1));
+            synchronized (bushels) {
+                bushels.wait(1000);
+                deliver(Math.abs(qnty1));
+            }
         }
-        Order order =getAmountOnHand();
 
-        synchronized (order) {
-            wait(5);
-            order.set(what, qnty1);
-            notify();
-        }
         setBushelAmount(specialty, qnty1);
 
         int qnty2 = bushels.get(what) + amt;
