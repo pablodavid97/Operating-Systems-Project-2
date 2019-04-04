@@ -1,120 +1,114 @@
-import org.omg.CORBA.ORB;
+/*
+Adrian Duque y Pablo LLanes
+Sistemas Operatuvos
+Proyecto 2
+ */
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TraderImpl implements Trader {
+
     private Grain specialty;
-    private Map<Grain, Integer> bushels = new ConcurrentHashMap<>();//new EnumMap(Grain.class);
+    private Order currentStock;
+    private Map<Grain, Integer> bushels;
 
-    private static Map<Grain,Trader> tradersP= new HashMap<>();
-//    private  Map<Grain,Integer> quantity = new HashMap<>();
+    private static Map<Grain, Trader> tradersP;
 
-    TraderImpl(Grain specialty) {
-        this.specialty = specialty;
-        //bushels = new EnumMap(Grain.class);
-        // bushels= new HashMap<>();
-
-        tradersP.put(specialty,this);
+    public TraderImpl(Grain grain) {
+        this.specialty = grain;
+        currentStock = new Order();
+        bushels = new ConcurrentHashMap<>();
+        tradersP = new ConcurrentHashMap<>();
+        tradersP.put(specialty, this);
 
         for (Grain g : Grain.values()) {
             bushels.put(g, 0);
-//            quantity.put(g,0);
         }
-        System.out.println("Specialist: " + specialty + " bushels: " +bushels);
-//        System.out.println("aquantity: "+quantity);
+        System.out.println("Specialist: " + specialty + " bushels: " + bushels);
     }
 
-    public synchronized void setBushelAmount(Grain g, int amt) {
-        bushels.put(g, amt);
-        notifyAll();
-    }
-
-
-    public void get(Order order) throws InterruptedException {
-        int diff = 0;
-        Order remainingStock = getAmountOnHand();
-
-        for (Grain g : bushels.keySet()) {
-
-            diff = remainingStock.get(g) - order.get(g);
-
-           // synchronized (bushels){
-                while (getAmountOnHand().get(g)-order.get(g)<=0) {
-                    {
-                        diff=getAmountOnHand().get(g)-order.get(g);
-                    }
-                }
-            //}
-
-            if (diff < 0) {
-                synchronized (bushels) {
-                    System.out.println("Trader " + specialty + " Out of stock");
-                    //order.wait(1000);
-                    //wait();
-
-                    for(Grain g1: tradersP.keySet())
-                    {
-                        if(g.equals(tradersP.keySet().iterator()))
-                        {
-                            if (g.equals(specialty)) {
-                                wait();
-                            } else {
-                                try {
-                                    System.out.println("Swapping.....");
-                                    P2.specialist(g).swap(specialty, Math.abs(diff));
-                                } catch (Exception e) {}
-                            }
-
-                        }
-                    }
-                    setBushelAmount(g, 0);
-                }
-            } else {
-                synchronized (bushels){
-                   // wait();
-                    setBushelAmount(g, remainingStock.get(g) - order.get(g));
-                }
-            }
-        }
-
-    }
-
-    public void deliver(int amt) throws InterruptedException {
-        int qnty = bushels.get(specialty) + amt;
-        setBushelAmount(specialty, qnty);
-
-    }
-
-    public void swap(Grain what, int amt) throws InterruptedException {
-        int qnty1 = bushels.get(specialty) - amt;
-
-        if(qnty1 < 0){
-            synchronized (bushels) {
-                //bushels.wait(1000);
-                deliver(Math.abs(qnty1));
-            }
-        }
-
-        setBushelAmount(specialty, qnty1);
-
-        int qnty2 = bushels.get(what) + amt;
-        setBushelAmount(what, qnty2);
-
-        notifyAll();
-
-    }
-
+    @Override
     public Order getAmountOnHand() {
-        Order order = new Order();
-
-        //bushels.forEach(order::set);
-        for(Grain g: bushels.keySet())
-        {
-            order.set(g,bushels.get(g).intValue());
+        Order order = currentStock;
+        for (Grain g : bushels.keySet()) {
+            order.set(g, currentStock.get(g));
         }
-
-        System.out.println("..............................."+ specialty +order);
         return order;
     }
+
+    @Override
+    public void get(Order order) throws InterruptedException {
+        System.out.println("Placing order " + order);
+
+        ArrayList<Grain> grains = new ArrayList(Arrays.asList(Grain.values()));
+        synchronized (order) {
+            waitStock(order);
+        }
+
+        grains.remove(this.specialty);
+        synchronized (order) {
+            getStock(grains, order);
+        }
+        grains.add(this.specialty);
+        for (Grain grain : grains) {
+            updateStock(grain, -order.get(grain));
+        }
+
+    }
+
+    @Override
+    public synchronized void swap(Grain what, int amt) throws InterruptedException {
+        synchronized (currentStock) {
+            updateStock(this.specialty, -amt);
+            updateStock(what, amt);
+        }
+        notifyAll();
+    }
+
+    @Override
+    public synchronized void deliver(int amt) throws InterruptedException {
+        updateStock(this.specialty, amt);
+        notifyAll();
+    }
+
+
+    // Metodo sincrono que se encarga de hacer el update al Stock actual, accede al metodo change de la clase Order
+    private synchronized void updateStock(Grain grain, int amt) {
+        synchronized (currentStock) {
+            currentStock.change(grain, amt);
+        }
+        notifyAll();
+
+    }
+
+    /*Metodo sincrono que hace que los threads esperen mientras el stock sea limitado o nulo*/
+    public synchronized void waitStock(Order order) throws InterruptedException {
+
+        while (currentStock.get(this.specialty) < order.get(this.specialty)) {
+            wait(100);
+        }
+    }
+
+
+    /*Metodo sincrono que se encabrga de comprobar la disponibilidad de stock, hacer un wait en caso de que no haya
+       y si hay, realiz los swaps pertinentes*/
+    public synchronized void getStock(ArrayList<Grain> grains, Order order) throws InterruptedException {
+        for (Grain grain : grains) {
+            int diff = order.get(grain) - currentStock.get(grain);
+
+            while (currentStock.get(grain) < order.get(grain)) {
+
+                if (currentStock.get(specialty) >= diff) {
+                    P2.specialist(grain).swap(specialty, diff);
+                    updateStock(grain, diff);
+                    updateStock(specialty, -diff);
+                } else {
+                    wait(100);
+                }
+            }
+
+        }
+    }
+
 }
